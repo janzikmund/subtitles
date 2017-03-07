@@ -32,4 +32,4 @@ npm install -g
 
 ## Modifications, enhancements
 - I will be happy to accept pull requests
-- don't forget that if you modify the script, you will have to always call `npm install -g` to push your changes to the global namespace
+- don't forget that if you modify the script, you will have to always call `npm install -g` while in project folder to push your changes to the global namespace
