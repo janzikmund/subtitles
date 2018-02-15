@@ -20,10 +20,19 @@ PASS=Your Password
 LANG=eng
 USER_AGENT=Your User Agent
 ```
-- install project as NPM global package so you can use it anywhere
+
+## Make it accessible globally - using symlink
+- preferred way, just simlink `subtitles.js` in project folder to any bin folder in your `$PATH`
+```bash
+ln -s /Users/<path/to/project>/subtitles.js /Users/<username>/bin/subtitles
+```
+
+## Make it accessible globally - using NPM
+- install project as NPM global package
 ```bash
 npm install -g
 ```
+- in this case if you modify the script, you will have to always call `npm install -g` while in project folder to push your changes to the global namespace
 
 ## Usage
 - once globally installed, in any folder type "subtitles" in terminal to search for subtitles
@@ -32,4 +41,3 @@ npm install -g
 
 ## Modifications, enhancements
 - I will be happy to accept pull requests
-- don't forget that if you modify the script, you will have to always call `npm install -g` while in project folder to push your changes to the global namespace
