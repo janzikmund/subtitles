@@ -1,14 +1,28 @@
 #!/usr/bin/env node
 
-// modules
-require('dotenv').load();
+// modules - dotenv doesn't work anymore when globally installed
+// require('dotenv').load();
+
+// console.log(process.env.PASS);
 
 const fs = require('fs'),
 _ = require('lodash'),
 OS = require('opensubtitles-api'),
-OpenSubtitles = new OS(process.env.USER_AGENT),
+OpenSubtitles = new OS('White Box App'),
+args = process.argv.slice(2),
 
-parseFiles = function() {
+// main launch script
+run = function() {
+	// if any args provided, take them as files to be searched for,
+	if(args.length > 0) {
+		parseSpecifiedFiles(args);
+	} else {
+		parseActualFolder();
+	}
+},
+
+// parse files in actual folder to find biggest one
+parseActualFolder = function() {
 	var files = [];
 	fs.readdir('.', (err, folder) => {
 	  folder.forEach(file => {
@@ -22,9 +36,41 @@ parseFiles = function() {
 	});
 },
 
+// parse files specified as parameters
+parseSpecifiedFiles = function(filenames) {
+	filenames.forEach(file => {
+		var stats = fs.statSync(file),
+		file = { 'name': file, 'size': stats["size"], 'stats' : stats };
+
+		searchSubtitles(file);
+	});
+},
+
+// guess movie name from its filename
+guessMovieName = function(filename) {
+	filename = filename.split('/').pop() 	// just take last file if any folders present
+		.split(/\d/).shift()				// if there is number, take everything before
+		.replace(/[^\w\d]/gi, ' ');
+	return filename;
+},
+
+// output to console and voice
+say = function(msg) {
+	const { exec } = require('child_process');
+
+	exec('say "' + msg + '"', (err, stdout, stderr) => {
+	  if (err) {
+	    // node couldn't execute the command
+	    return;
+	  }
+	});
+},
+
 searchSubtitles = function (file) {
-	console.log('searching subtitles for ', file.name);
-	OpenSubtitles.api.LogIn(process.env.USER, process.env.PASS, process.env.LANG, process.env.USER_AGENT).then(res => {
+	console.log('Searching subtitles for ', file.name);
+	// say('Searching for subtitles');
+
+	OpenSubtitles.api.LogIn('pan_ziki', 'gJRFspWWpC7T6c', 'eng', 'White Box App').then(res => {
 		OpenSubtitles.search({
 		    sublanguageid: 'eng',    // Can be an array.join, 'all', or be omitted.
 		    filesize: file.size,     // Total size, in bytes.
@@ -34,12 +80,15 @@ searchSubtitles = function (file) {
 		    limit: '5',              // Limit the number of results
 		    gzip: true               // Returns url to gzipped subtitles, defaults to false
 		}).then(subtitles => {
+		    var i = '1',
+		    filename_base = file.name.substring(0, file.name.lastIndexOf(".") ),
+		    suffix = '',
+		    movie_name = guessMovieName(filename_base);
+
 			// if english subtitles, download them
 			if (subtitles.en) {
-			    console.log('-- Subtitle found --');
-			    var i = '1';
-			    var filename_base = file.name.substring(0, file.name.lastIndexOf(".") );
-			    var suffix = '';
+			    console.log('[ ' + movie_name + ' ] ' + ' -- Subtitle found --');
+			    // say('Subtitles found, downloading them for you now. Enjoy the movie bro!');
 			    subtitles.en.forEach( subtitle => {
 			    	// resolve filename
 			    	var filename = './' + filename_base + suffix + '.srt';
@@ -58,7 +107,7 @@ searchSubtitles = function (file) {
 				            	if(err) {
 				            		throw error;
 				            	}
-				            	console.log('Subtitles downloaded: ' + filename);
+				            	console.log('[ ' + movie_name + ' ] ' + ' Subtitles downloaded: ' + filename);
 				            });
 				        });
 				    });
@@ -68,13 +117,18 @@ searchSubtitles = function (file) {
 				    suffix = '.v-' + i;
 			    });
 
-
 			} else {
-			    throw 'no subtitle found';
+			    throw 'No subtitle found';
 			}
-		});
+		})
+		// catch if no subtitles found or other error and display it
+		.catch(err => {
+			var filename_base = file.name.substring(0, file.name.lastIndexOf(".") ),
+		    movie_name = guessMovieName(filename_base);
+        	console.log('[ ' + movie_name + ' ] ' + ' Error: ' + err);
+    	});
 	});
 };
 
-
-parseFiles();
+// run command
+run();
