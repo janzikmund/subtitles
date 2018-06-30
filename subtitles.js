@@ -1,13 +1,19 @@
 #!/usr/bin/env node
 
-// load .env variables
-require('dotenv').load();
+// load .env variables. Needs passing the path, otherwise node would search for .env
+// in the movie folder where script command is called from
+require('dotenv').config({
+	path: __dirname + '/.env'
+});
 
 var program = require('commander'),
 fs = require('fs'),
 _ = require('lodash'),
 OS = require('opensubtitles-api'),
 OpenSubtitles = new OS('White Box App'),
+TheMovieDatabase = require('themoviedb'),
+Youtubedl = require('youtube-dl'),
+pluralize = require('pluralize');
 
 // main launch script
 run = function() {
@@ -17,18 +23,19 @@ run = function() {
 	.usage('[options] <file ...>')
 	.description('Download subtitles for movie. Can also download trailers.')
 	.option('-t, --trailer', 'Also download movie trailer')
+	.option('-x, --exclude', 'Exclude subtitle file (for only downloading trailers)')
 	.parse(process.argv);
 
 	// if any files provided, take them as files to be searched for,
 	if(program.args.length > 0) {
-		parseSpecifiedFiles(program.args, program.trailer);
+		parseSpecifiedFiles(program.args, program.trailer, program.exclude);
 	} else {
-		parseActualFolder(program.trailer);
+		parseActualFolder(program.trailer, program.exclude);
 	}
 },
 
 // parse files in actual folder to find biggest one
-parseActualFolder = function(trailer) {
+parseActualFolder = function(trailer, exclude) {
 	var files = [];
 	fs.readdir('.', (err, folder) => {
 		folder.forEach(file => {
@@ -38,7 +45,11 @@ parseActualFolder = function(trailer) {
 
 		// take biggest file
 		files = _.orderBy(files, 'size', 'desc');
-		searchSubtitles(files[0]);
+
+		// download subtitles if not excluded
+		if(!exclude) {
+			searchSubtitles(files[0]);
+		}
 
 		// download trailer if turned on
 		if(trailer) {
@@ -48,12 +59,15 @@ parseActualFolder = function(trailer) {
 },
 
 // parse files specified as parameters
-parseSpecifiedFiles = function(filenames, trailer) {
+parseSpecifiedFiles = function(filenames, trailer, exclude) {
 	filenames.forEach(file => {
 		var stats = fs.statSync(file),
 		file = { 'name': file, 'size': stats["size"], 'stats' : stats };
 
-		searchSubtitles(file);
+		// subtitles if not excluded
+		if(!exclude) {
+			searchSubtitles(file);
+		}
 
 		// trailer if turned on
 		if(trailer) {
@@ -66,9 +80,17 @@ parseSpecifiedFiles = function(filenames, trailer) {
 // guess movie name from its filename
 guessMovieName = function(filename) {
 	filename = filename.split('/').pop() 	// just take last file if any folders present
-		.split(/\d/).shift()				// if there is number, take everything before
+		.split(/\d\d/).shift()				// if there is number of two decimals, take everything before
 		.replace(/[^\w\d]/gi, ' ');
 		return filename;
+},
+
+bytesToSize = function(bytes) {
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+  if (bytes === 0) return 'n/a'
+  const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)), 10)
+  if (i === 0) return `${bytes} ${sizes[i]})`
+  return `${(bytes / (1024 ** i)).toFixed(1)} ${sizes[i]}`
 },
 
 // output to console and voice
@@ -105,7 +127,7 @@ searchSubtitles = function (file) {
 
 			// if english subtitles, download them
 			if (subtitles.en) {
-				console.log('[ ' + movie_name + ' ] ' + ' -- Subtitle found --');
+				console.log('[ ' + movie_name + ' ]  -- Subtitle found --');
 				// say('Subtitles found, downloading them for you now. Enjoy the movie bro!');
 				subtitles.en.forEach( subtitle => {
 					// resolve filename
@@ -125,7 +147,7 @@ searchSubtitles = function (file) {
 								if(err) {
 									throw error;
 								}
-								console.log('[ ' + movie_name + ' ] ' + ' Subtitles downloaded: ' + filename);
+								console.log('[ ' + movie_name + ' ]  Subtitles downloaded: ' + filename);
 							});
 						});
 					});
@@ -143,15 +165,84 @@ searchSubtitles = function (file) {
 		.catch(err => {
 			var filename_base = file.name.substring(0, file.name.lastIndexOf(".") ),
 			movie_name = guessMovieName(filename_base);
-			console.log('[ ' + movie_name + ' ] ' + ' Error: ' + err);
+			console.log('[ ' + movie_name + ' ]  Error: ' + err);
 		});
 	});
 },
 
+// store file from youtube
+storeYoutubeFile = function(url, movieName) {
+
+	var video = Youtubedl(url,
+	  // Optional arguments passed to youtube-dl.
+	  [/*'--format=18'*/],
+	  // Additional options can be given for calling `child_process.execFile()`.
+	  { cwd: __dirname }
+	);
+
+	// called when the download starts.
+	video.on('info', function(info) {
+	  console.log(`[ ${movieName} ]  Downloading trailer: ${info._filename}`);
+	  console.log(`[ ${movieName} ]  Trailer size: ${bytesToSize(info.size)}`);
+	});
+
+	// download
+	video.pipe(fs.createWriteStream('_trailer.mp4'));
+
+	// download finished
+	video.on('end', function() {
+		console.log(`[ ${movieName} ]  Trailer downloaded.`);
+	});
+},
+
+// filter multiple videos returned to find best matching trailer
+chooseBestTrailer = function(videos) {
+
+	// first pass - keep only items containing 'trailer', if multiple items have it keep only those for next filters
+	var filtered = _.filter(videos, o => _.includes(_.lowerCase(o), 'trailer') );
+	if(filtered.length === 1) {
+		return filtered;
+	} else if (filtered.length > 1) {
+		videos = filtered;
+	}
+
+	// return what we have
+	return videos[1];
+},
+
 // download trailer for movie
 downloadTrailer = function(file) {
-	// @todo
-	console.log('Downloading trailer for ' + file.name);
+	var movieName = guessMovieName(file.name),
+	client = new TheMovieDatabase(process.env.TMD_APIKEY);
+
+	console.log(`[ ${movieName} ]  Searching for trailer`);
+
+	// search for movies
+	client.searchMovies({
+		query: movieName,
+		sortBy: 'popularity.desc',
+		includeAdult: false
+	}, function(err, movies) {
+		if(movies.length > 0) {
+			console.log(`[ ${movieName} ]  Movie found in database: ${movies[0].title}`);
+			console.log(`[ ${movieName} ]  Year ${movies[0].year}, Rating ${movies[0].voteAverage}`);
+
+			// grab trailers
+			client.getVideosOfMovie(movies[0].id, function(err, res) {
+				if(res.videos.length > 0) {
+			    	console.log(`[ ${movieName} ]  ${pluralize('trailer', res.videos.length, true)} found.`);
+
+					// determine video and download it
+					var video = (res.videos.length === 1 ? res.videos[0] : chooseBestTrailer(res.videos));
+			    	storeYoutubeFile(video.url, movieName);
+				} else {
+					console.log(`[ ${movieName} ]  No trailers found for the movie.`);
+				}
+			});
+		} else {
+			console.log(`[ ${movieName} ]  Movie not found in database.`);
+		}
+	});
 };
 
 // run command
