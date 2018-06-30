@@ -7,10 +7,11 @@
     "node": ">=0.10"
   },
   "dependencies": {
+    "commander": "^2.16.0",
     "dotenv": "^4.0.0",
-    "lodash": "^4.17.4",
-    "opensubtitles-api": "^4.0.0-rc1",
-    "request": "^2.79.0"
+    "lodash": "^4.17.10",
+    "opensubtitles-api": "^4.1.0",
+    "request": "^2.87.0"
   },
   "bin": {
     "subtitles": "subtitles.js"
