@@ -11,6 +11,7 @@
     "dotenv": "^4.0.0",
     "lodash": "^4.17.10",
     "opensubtitles-api": "^4.1.0",
+    "path": "^0.12.7",
     "pluralize": "^7.0.0",
     "request": "^2.87.0",
     "themoviedb": "^0.1.0",

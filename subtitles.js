@@ -13,7 +13,8 @@ OS = require('opensubtitles-api'),
 OpenSubtitles = new OS('White Box App'),
 TheMovieDatabase = require('themoviedb'),
 Youtubedl = require('youtube-dl'),
-pluralize = require('pluralize');
+pluralize = require('pluralize'),
+path = require('path');
 
 // main launch script
 run = function() {
@@ -109,7 +110,7 @@ say = function(msg) {
 searchSubtitles = function (file) {
 	console.log('Searching subtitles for ', file.name);
 	// say('Searching for subtitles');
-
+//console.log(file);
 	OpenSubtitles.api.LogIn(process.env.USER, process.env.PASS, process.env.LANG, process.env.USER_AGENT).then(res => {
 		OpenSubtitles.search({
 			sublanguageid: 'eng',    // Can be an array.join, 'all', or be omitted.
@@ -171,12 +172,13 @@ searchSubtitles = function (file) {
 },
 
 // store file from youtube
-storeYoutubeFile = function(url, movieName) {
-
-	var video = Youtubedl(url,
+storeYoutubeFile = function(url, movieName, file) {
+	var targetFile = path.dirname(process.cwd() + '/' + file.name) + '/_trailer.mp4',
+	video = Youtubedl(url,
 	  // Optional arguments passed to youtube-dl.
 	  [/*'--format=18'*/],
 	  // Additional options can be given for calling `child_process.execFile()`.
+	  // store it to movie folder
 	  { cwd: __dirname }
 	);
 
@@ -187,7 +189,7 @@ storeYoutubeFile = function(url, movieName) {
 	});
 
 	// download
-	video.pipe(fs.createWriteStream('_trailer.mp4'));
+	video.pipe(fs.createWriteStream(targetFile));
 
 	// download finished
 	video.on('end', function() {
@@ -234,7 +236,7 @@ downloadTrailer = function(file) {
 
 					// determine video and download it
 					var video = (res.videos.length === 1 ? res.videos[0] : chooseBestTrailer(res.videos));
-			    	storeYoutubeFile(video.url, movieName);
+			    	storeYoutubeFile(video.url, movieName, file);
 				} else {
 					console.log(`[ ${movieName} ]  No trailers found for the movie.`);
 				}
