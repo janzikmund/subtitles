@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+"use strict";
 
 // load .env variables. Needs passing the path, otherwise node would search for .env
 // in the movie folder where script command is called from
@@ -14,7 +15,7 @@ OpenSubtitles = new OS('White Box App'),
 TheMovieDatabase = require('themoviedb'),
 Youtubedl = require('youtube-dl'),
 pluralize = require('pluralize'),
-path = require('path');
+path = require('path'),
 
 // main launch script
 run = function() {
@@ -41,7 +42,7 @@ parseActualFolder = function(trailer, subtitles) {
 	fs.readdir('.', (err, folder) => {
 		folder.forEach(file => {
 			var stats = fs.statSync(file);
-			files.push({ 'name': file, 'size': stats["size"], 'stats' : stats });
+			files.push({ 'name': file, 'size': stats.size, 'stats' : stats });
 		});
 
 		// take biggest file
@@ -87,11 +88,11 @@ guessMovieName = function(filename) {
 },
 
 bytesToSize = function(bytes) {
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  if (bytes === 0) return 'n/a'
-  const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)), 10)
-  if (i === 0) return `${bytes} ${sizes[i]})`
-  return `${(bytes / (1024 ** i)).toFixed(1)} ${sizes[i]}`
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  if (bytes === 0) return 'n/a';
+  const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)), 10);
+  if (i === 0) return `${bytes} ${sizes[i]})`;
+  return `${(bytes / (1024 ** i)).toFixed(1)} ${sizes[i]}`;
 },
 
 // download subtitles from API
@@ -123,11 +124,11 @@ searchSubtitles = function (file) {
 						url: subtitle.url,
 						encoding: null
 					}, (error, response, data) => {
-						if (error) throw error;
+						if (error) { throw error; }
 						// set default encoding if not in subtitle
-						if(typeof subtitle.encoding === undefined || (subtitle.encoding !=='ascii' && subtitle.encoding !=='utf8' && subtitle.encoding !=='ascii'  && subtitle.encoding !=='ucs2'  && subtitle.encoding !=='latin1') ) subtitle.encoding = 'utf8';
+						if(typeof subtitle.encoding === undefined || (subtitle.encoding !=='ascii' && subtitle.encoding !=='utf8' && subtitle.encoding !=='ascii'  && subtitle.encoding !=='ucs2'  && subtitle.encoding !=='latin1') ) { subtitle.encoding = 'utf8'; }
 						require('zlib').unzip(data, (error, buffer) => {
-							if (error) throw error;
+							if (error) { throw error; }
 
 							// skip file if exists already
 							if(fs.existsSync(filename)) {
