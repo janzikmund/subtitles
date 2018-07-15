@@ -22,21 +22,21 @@ run = function() {
 	program
 	.version('0.1.0')
 	.usage('[options] <file ...>')
-	.description('Download subtitles for movie. Can also download trailers.')
-	.option('-t, --trailer', 'Also download movie trailer')
-	.option('-x, --exclude', 'Exclude subtitle file (for only downloading trailers)')
+	.description('Downloads subtitles and trailer for movie.')
+	.option('-t, --trailer', 'Download just trailer')
+	.option('-s, --subtitles', 'Download just subtitles')
 	.parse(process.argv);
 
 	// if any files provided, take them as files to be searched for,
 	if(program.args.length > 0) {
-		parseSpecifiedFiles(program.args, program.trailer, program.exclude);
+		parseSpecifiedFiles(program.args, program.trailer, program.subtitles);
 	} else {
-		parseActualFolder(program.trailer, program.exclude);
+		parseActualFolder(program.trailer, program.subtitles);
 	}
 },
 
 // parse files in actual folder to find biggest one
-parseActualFolder = function(trailer, exclude) {
+parseActualFolder = function(trailer, subtitles) {
 	var files = [];
 	fs.readdir('.', (err, folder) => {
 		folder.forEach(file => {
@@ -47,31 +47,31 @@ parseActualFolder = function(trailer, exclude) {
 		// take biggest file
 		files = _.orderBy(files, 'size', 'desc');
 
-		// download subtitles if not excluded
-		if(!exclude) {
+		// download subtitles if set or no param specified
+		if(subtitles || (!subtitles && !trailer)) {
 			searchSubtitles(files[0]);
 		}
 
-		// download trailer if turned on
-		if(trailer) {
+		// download trailer if set or no param specified
+		if(trailer || (!subtitles && !trailer)) {
 	  		downloadTrailer(files[0]);
 	 	}
 	});
 },
 
 // parse files specified as parameters
-parseSpecifiedFiles = function(filenames, trailer, exclude) {
+parseSpecifiedFiles = function(filenames, trailer, subtitles) {
 	filenames.forEach(file => {
 		var stats = fs.statSync(file),
 		file = { 'name': file, 'size': stats["size"], 'stats' : stats };
 
 		// subtitles if not excluded
-		if(!exclude) {
+		if(subtitles || (!subtitles && !trailer)) {
 			searchSubtitles(file);
 		}
 
 		// trailer if turned on
-		if(trailer) {
+		if(trailer || (!subtitles && !trailer)) {
 			downloadTrailer(file);
 		}
 	});
@@ -81,7 +81,7 @@ parseSpecifiedFiles = function(filenames, trailer, exclude) {
 // guess movie name from its filename
 guessMovieName = function(filename) {
 	filename = filename.split('/').pop() 	// just take last file if any folders present
-		.split(/\d\d/).shift()				// if there is number of two decimals, take everything before
+		.split(/\d\d\d/).shift()				// if there is number of three decimals, take everything before
 		.replace(/[^\w\d]/gi, ' ');
 		return filename;
 },
@@ -94,23 +94,9 @@ bytesToSize = function(bytes) {
   return `${(bytes / (1024 ** i)).toFixed(1)} ${sizes[i]}`
 },
 
-// output to console and voice
-say = function(msg) {
-	const { exec } = require('child_process');
-
-	exec('say "' + msg + '"', (err, stdout, stderr) => {
-		if (err) {
-			// node couldn't execute the command
-			return;
-		}
-	});
-},
-
 // download subtitles from API
 searchSubtitles = function (file) {
 	console.log('Searching subtitles for ', file.name);
-	// say('Searching for subtitles');
-//console.log(file);
 	OpenSubtitles.api.LogIn(process.env.USER, process.env.PASS, process.env.LANG, process.env.USER_AGENT).then(res => {
 		OpenSubtitles.search({
 			sublanguageid: 'eng',    // Can be an array.join, 'all', or be omitted.
@@ -129,7 +115,6 @@ searchSubtitles = function (file) {
 			// if english subtitles, download them
 			if (subtitles.en) {
 				console.log('[ ' + movie_name + ' ]  -- Subtitle found --');
-				// say('Subtitles found, downloading them for you now. Enjoy the movie bro!');
 				subtitles.en.forEach( subtitle => {
 					// resolve filename
 					var filename = './' + filename_base + suffix + '.srt';
