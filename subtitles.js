@@ -128,6 +128,14 @@ searchSubtitles = function (file) {
 						if(typeof subtitle.encoding === undefined || (subtitle.encoding !=='ascii' && subtitle.encoding !=='utf8' && subtitle.encoding !=='ascii'  && subtitle.encoding !=='ucs2'  && subtitle.encoding !=='latin1') ) subtitle.encoding = 'utf8';
 						require('zlib').unzip(data, (error, buffer) => {
 							if (error) throw error;
+
+							// skip file if exists already
+							if(fs.existsSync(filename)) {
+								console.log('[ ' + movie_name + ' ]  Subtitle file already exists, skipping: ' + filename);
+								return;
+							}
+
+							// store subtitles
 							const subtitle_content = buffer.toString(subtitle.encoding);
 							fs.writeFile(filename, subtitle_content, function(err) {
 								if(err) {
@@ -158,8 +166,15 @@ searchSubtitles = function (file) {
 
 // store file from youtube
 storeYoutubeFile = function(url, movieName, file) {
-	var targetFile = path.dirname(process.cwd() + '/' + file.name) + '/_trailer.mp4',
-	video = Youtubedl(url,
+	var targetFile = path.dirname(process.cwd() + '/' + file.name) + '/_trailer.mp4';
+
+	// skip download if exists already
+	if(fs.existsSync(targetFile)) {
+		console.log('[ ' + movieName + ' ]  Trailer already exists, skipping: ' + targetFile);
+		return;
+	}
+
+	var video = Youtubedl(url,
 	  // Optional arguments passed to youtube-dl.
 	  [/*'--format=18'*/],
 	  // Additional options can be given for calling `child_process.execFile()`.
