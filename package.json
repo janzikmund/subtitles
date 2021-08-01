@@ -15,7 +15,7 @@
     "pluralize": "^7.0.0",
     "request": "^2.87.0",
     "themoviedb": "^0.1.0",
-    "youtube-dl": "^1.12.2"
+    "youtube-dl": "^3.5.0"
   },
   "bin": {
     "subtitles": "subtitles.js"
