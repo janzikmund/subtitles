@@ -7,15 +7,16 @@
     "node": ">=0.10"
   },
   "dependencies": {
-    "commander": "^2.16.0",
-    "dotenv": "^4.0.0",
+    "commander": "^9.4.0",
+    "dotenv": "^16.0.1",
     "lodash": "^4.17.21",
-    "opensubtitles-api": "^4.1.0",
+    "opensubtitles.com": "^1.0.0",
+    "osdb-hash": "^0.1.1",
     "path": "^0.12.7",
-    "pluralize": "^7.0.0",
-    "request": "^2.87.0",
+    "pluralize": "^8.0.0",
+    "request": "^2.88.2",
     "themoviedb": "^0.1.0",
-    "youtube-dl": "^3.5.0"
+    "youtube-dl-exec": "^2.1.4"
   },
   "bin": {
     "subtitles": "subtitles.js"

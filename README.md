@@ -11,18 +11,18 @@ npm install
 ```
 
 ## Configuration
-- register for your API user account on [opensubtitles](https://www.opensubtitles.org)
-- apply for user agent as described in [opensubtitles docs](http://trac.opensubtitles.org/projects/opensubtitles/wiki/DevReadFirst)
+- register for your user account on [opensubtitles](https://www.opensubtitles.com)
+- create Consumer in your profile
 - register for your user account on [The Movie DB](https://www.themoviedb.org/account/signup)
 - login to your TMB account and [apply for API key](https://www.themoviedb.org/settings/api)
 - create `.env` file in project folder and add following lines:
 
 ```
 # Open Subtitles Login Credentials
-USER=Your Username
-PASS=Your Password
-LANG=eng
-USER_AGENT=Your User Agent
+OS_USER=Your Username
+OS_PASS=Your Password
+OS_APIKEY=Your API KEY
+OS_LANG=en
 
 # The Movie Database API key
 TMD_APIKEY=Your TMD api key

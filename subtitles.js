@@ -10,12 +10,14 @@ require('dotenv').config({
 var program = require('commander'),
 fs = require('fs'),
 _ = require('lodash'),
-OS = require('opensubtitles-api'),
-OpenSubtitles = new OS('White Box App'),
+OS = require('opensubtitles.com'),
+os = new OS({apikey: process.env.OS_APIKEY}),
+OSDbHash = require("osdb-hash"),
 TheMovieDatabase = require('themoviedb'),
-Youtubedl = require('youtube-dl'),
+Youtubedl = require('youtube-dl-exec'),
 pluralize = require('pluralize'),
 path = require('path'),
+request = require('request'),
 
 // main launch script
 run = function() {
@@ -32,7 +34,7 @@ run = function() {
 	if(program.args.length > 0) {
 		parseSpecifiedFiles(program.args, program.trailer, program.subtitles);
 	} else {
-		parseActualFolder(program.trailer, program.subtitles);
+		parseActualFolder(program.opts().trailer, program.opts().subtitles);
 	}
 },
 
@@ -52,7 +54,6 @@ parseActualFolder = function(trailer, subtitles) {
 		if(subtitles || (!subtitles && !trailer)) {
 			searchSubtitles(files[0]);
 		}
-
 		// download trailer if set or no param specified
 		if(trailer || (!subtitles && !trailer)) {
 	  		downloadTrailer(files[0]);
@@ -84,7 +85,7 @@ guessMovieName = function(filename) {
 	filename = filename.split('/').pop() 	// just take last file if any folders present
 		.split(/\d\d\d/).shift()				// if there is number of three decimals, take everything before
 		.replace(/[^\w\d]/gi, ' ');
-		return filename;
+		return filename.trim();
 },
 
 bytesToSize = function(bytes) {
@@ -96,35 +97,135 @@ bytesToSize = function(bytes) {
 },
 
 // download subtitles from API
-searchSubtitles = function (file) {
-	console.log('Searching subtitles for ', file.name);
-	OpenSubtitles.api.LogIn(process.env.USER, process.env.PASS, process.env.LANG, process.env.USER_AGENT).then(res => {
-		OpenSubtitles.search({
-			sublanguageid: 'eng',    // Can be an array.join, 'all', or be omitted.
-			filesize: file.size,     // Total size, in bytes.
-			path: './' + file.name,  // Complete path to the video file, it allows to automatically calculate 'hash'.
-			filename: file.name,     // The video file name. Better if extension is included.
-			extensions: ['srt'],     // Accepted extensions, defaults to 'srt'.
-			limit: '5',              // Limit the number of results
-			gzip: true               // Returns url to gzipped subtitles, defaults to false
-		}).then(subtitles => {
-			var i = '1',
-			filename_base = file.name.substring(0, file.name.lastIndexOf(".") ),
-			suffix = '',
-			movie_name = guessMovieName(filename_base);
+searchSubtitles = async function (file) {
+	var hash = await countMovieHash(file),
+		searchParams = {
+			query: file.name,
+			moviehash: hash,
+			languages: process.env.OS_LANG,
+		};
 
-			// if english subtitles, download them
-			if (subtitles.en) {
-				console.log('[ ' + movie_name + ' ]  -- Subtitle found --');
-				subtitles.en.forEach( subtitle => {
-					// resolve filename
-					var filename = './' + filename_base + suffix + '.srt';
+	console.log(`Signing In for OpenSubtitles API`);
+	try {
+		let response = await os.login({
+			username: process.env.OS_USER,
+			password: process.env.OS_PASS
+		});
+		console.log(`Success, received JWT token ${response.token}`);
 
-					require('request')({
-						url: subtitle.url,
-						encoding: null
-					}, (error, response, data) => {
+	} catch(err) {
+		console.log(err);
+	}
+
+	console.log(`Searching subtitles for ${file.name}`);
+
+	os.subtitles(searchParams).then(response => {
+		let subtitles = response.data;
+		if(subtitles.length > 0) {
+			storeSubtitles(subtitles.slice(0, 5), file);
+		} else {
+			throw 'No subtitle found';
+		}
+	})
+	// catch if no subtitles found or other error and display it
+	.catch(err => {
+		var filename_base = file.name.substring(0, file.name.lastIndexOf(".") ),
+		movie_name = guessMovieName(filename_base);
+		console.log('[ ' + movie_name + ' ]  Error: ' + err);
+	});
+
+},
+
+countMovieHash = async function(file) {
+	let osdb = new OSDbHash(`./${file.name}`);
+	let res = await osdb.compute( (hash) => hash);
+	return res;
+},
+
+storeSubtitles = function(subtitles, file) {
+		var i = '1',
+		filename_base = file.name.substring(0, file.name.lastIndexOf(".") ),
+		suffix = '',
+		movie_name = guessMovieName(filename_base);
+
+		console.log('[ ' + movie_name + ' ]  -- Subtitle found --');
+
+		subtitles.forEach((subtitle) => {
+			// resolve filename
+			var filename = './' + filename_base + suffix + '.srt';
+
+			setTimeout(filename => {
+				// resolve download URL
+				os.download({
+	  				file_id: subtitle.attributes.files[0].file_id,
+	  			}).then(downloadResponse => {
+					request(downloadResponse.link, (error, response, data) => {
 						if (error) { throw error; }
+
+						// skip file if exists already
+						if(fs.existsSync(filename)) {
+							console.log('[ ' + movie_name + ' ]  Subtitle file already exists, skipping: ' + filename);
+							return;
+						}
+
+						fs.writeFile(filename, data, function(err) {
+							if(err) {
+								throw error;
+							}
+							console.log('[ ' + movie_name + ' ]  Subtitles downloaded: ' + filename);
+						});
+
+						// some legacy code from old version if it was still any relevant, will be removed fully in future versions
+						/* 
+						// set default encoding if not in subtitle
+						if(typeof subtitle.encoding === undefined || (subtitle.encoding !=='ascii' && subtitle.encoding !=='utf8' && subtitle.encoding !=='ascii'  && subtitle.encoding !=='ucs2'  && subtitle.encoding !=='latin1') ) { subtitle.encoding = 'utf8'; }
+						require('zlib').unzip(data, (error, buffer) => {
+							if (error) { throw error; }
+
+							// skip file if exists already
+							if(fs.existsSync(filename)) {
+								console.log('[ ' + movie_name + ' ]  Subtitle file already exists, skipping: ' + filename);
+								return;
+							}
+
+							// store subtitles
+							const subtitle_content = buffer.toString(subtitle.encoding);
+							fs.writeFile(filename, subtitle_content, function(err) {
+								if(err) {
+									throw error;
+								}
+								console.log('[ ' + movie_name + ' ]  Subtitles downloaded: ' + filename);
+							});
+						});
+						*/				
+					});
+	  			}).catch(console.error);
+			}, (i-1) * 1000, filename);
+
+			/*
+			((filename) => {
+				// resolve download URL
+				os.download({
+	  				file_id: subtitle.attributes.files[0].file_id,
+	  			}).then(downloadResponse => {
+					request(downloadResponse.link, (error, response, data) => {
+						if (error) { throw error; }
+
+						// skip file if exists already
+						if(fs.existsSync(filename)) {
+							console.log('[ ' + movie_name + ' ]  Subtitle file already exists, skipping: ' + filename);
+							return;
+						}
+
+						fs.writeFile(filename, data, function(err) {
+							if(err) {
+								throw error;
+							}
+							console.log('[ ' + movie_name + ' ]  Subtitles downloaded: ' + filename);
+						});
+
+						// some legacy code from old version if it was still any relevant, will be removed fully in future versions
+						/* 
 						// set default encoding if not in subtitle
 						if(typeof subtitle.encoding === undefined || (subtitle.encoding !=='ascii' && subtitle.encoding !=='utf8' && subtitle.encoding !=='ascii'  && subtitle.encoding !=='ucs2'  && subtitle.encoding !=='latin1') ) { subtitle.encoding = 'utf8'; }
 						require('zlib').unzip(data, (error, buffer) => {
@@ -146,28 +247,20 @@ searchSubtitles = function (file) {
 							});
 						});
 					});
+	  			}).catch(console.error);
 
-					// raise index and suffix
-					i++;
-					suffix = '.v-' + i;
-				});
+			})(filename);
+						*/				
 
-			} else {
-				throw 'No subtitle found';
-			}
-		})
-		// catch if no subtitles found or other error and display it
-		.catch(err => {
-			var filename_base = file.name.substring(0, file.name.lastIndexOf(".") ),
-			movie_name = guessMovieName(filename_base);
-			console.log('[ ' + movie_name + ' ]  Error: ' + err);
+			// raise index and suffix
+			i++;
+			suffix = '.v-' + i;
 		});
-	});
 },
 
 // store file from youtube
-storeYoutubeFile = function(url, movieName, file) {
-	var targetFile = path.dirname(process.cwd() + '/' + file.name) + '/_trailer.mp4';
+storeYoutubeFile = async function(url, movieName, file) {
+	var targetFile = path.dirname(process.cwd() + '/' + file.name) + '/_trailer.%(ext)s';
 
 	// skip download if exists already
 	if(fs.existsSync(targetFile)) {
@@ -175,42 +268,43 @@ storeYoutubeFile = function(url, movieName, file) {
 		return;
 	}
 
-	var video = Youtubedl(url,
-	  // Optional arguments passed to youtube-dl.
-	  [/*'--format=18'*/],
-	  // Additional options can be given for calling `child_process.execFile()`.
-	  // store it to movie folder
-	  { cwd: __dirname }
-	);
-
-	// called when the download starts.
-	video.on('info', function(info) {
-	  console.log(`[ ${movieName} ]  Downloading trailer: ${info._filename}`);
-	  console.log(`[ ${movieName} ]  Trailer size: ${bytesToSize(info.size)}`);
+	let videoData = await Youtubedl(url, {
+		dumpSingleJson: true,
+		noWarnings: true,
+		noCallHome: true,
+		noCheckCertificate: true,
+		preferFreeFormats: true,
+		youtubeSkipDashManifest: true,
+		referer: url
 	});
 
-	// download
-	video.pipe(fs.createWriteStream(targetFile));
-
-	// download finished
-	video.on('end', function() {
+	console.log(`[ ${movieName} ]  Downloading trailer from ${videoData.title}`);
+	Youtubedl(url, {
+		noWarnings: true,
+		noCallHome: true,
+		noCheckCertificate: true,
+		preferFreeFormats: true,
+		youtubeSkipDashManifest: true,
+		referer: url,
+		o: targetFile,
+		mergeOutputFormat: 'mkv',
+	}).then(output => {
 		console.log(`[ ${movieName} ]  Trailer downloaded.`);
 	});
 },
 
 // filter multiple videos returned to find best matching trailer
 chooseBestTrailer = function(videos) {
+	var filtered;
 
-	// first pass - keep only items containing 'trailer', if multiple items have it keep only those for next filters
-	var filtered = _.filter(videos, o => _.includes(_.lowerCase(o), 'trailer') );
-	if(filtered.length === 1) {
-		return filtered;
-	} else if (filtered.length > 1) {
-		videos = filtered;
-	}
+	filtered = _.filter(videos, o => _.includes(_.lowerCase(o.name), 'official trailer') );
+	if(filtered.length > 0) return filtered[0];
+
+	filtered = _.filter(videos, o => _.includes(_.lowerCase(o.name), 'trailer') );
+	if(filtered.length > 0) return filtered[0];
 
 	// return what we have
-	return videos[1];
+	return videos[0];
 },
 
 // download trailer for movie
